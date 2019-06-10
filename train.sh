@@ -1,8 +1,9 @@
-export SQUAD_DIR=./squad
+export SQUAD_DIR=./squad/simple
 export PYTORCH_PRETRAINED_BERT_CACHE=./bert
 
+# --do_train \
 python run_squad.py \
-  --bert_model bert-base-uncased \
+  --bert_model $PYTORCH_PRETRAINED_BERT_CACHE/bert-base-uncased \
   --do_train \
   --do_predict \
   --do_lower_case \

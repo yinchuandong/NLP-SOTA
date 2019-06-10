@@ -29,13 +29,17 @@ from io import open
 
 import numpy as np
 import torch
+from torch import nn
+from torch.nn import CrossEntropyLoss, BCELoss, BCEWithLogitsLoss
+
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
                               TensorDataset)
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 
 from pytorch_pretrained_bert.file_utils import PYTORCH_PRETRAINED_BERT_CACHE, WEIGHTS_NAME, CONFIG_NAME
-from pytorch_pretrained_bert.modeling import BertForQuestionAnswering, BertConfig
+# from pytorch_pretrained_bert.modeling import BertForQuestionAnswering, BertConfig
+from pytorch_pretrained_bert.modeling import BertModel, BertPreTrainedModel, BertConfig
 from pytorch_pretrained_bert.optimization import BertAdam, WarmupLinearSchedule
 from pytorch_pretrained_bert.tokenization import (BasicTokenizer,
                                                   BertTokenizer,
@@ -760,6 +764,61 @@ def _compute_softmax(scores):
         probs.append(score / total_sum)
     return probs
 
+
+
+class BertForQuestionAnswering(BertPreTrainedModel):
+    def __init__(self, config):
+        super(BertForQuestionAnswering, self).__init__(config)
+        self.bert = BertModel(config)
+        # TODO check with Google if it's normal there is no dropout on the token classifier of SQuAD in the TF version
+        # self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.qa_outputs = nn.Linear(config.hidden_size, 2)
+        self.apply(self.init_bert_weights)
+
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, start_positions=None, end_positions=None):
+        print('---------------------------------------------------')
+        sequence_output, pooled_output = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+        logits = self.qa_outputs(sequence_output)
+        start_logits, end_logits = logits.split(1, dim=-1)
+        print('sequence_output: ', sequence_output.size())
+        print('pool: ', pooled_output.size())
+        print('org logits: ', logits.size())
+        print('org start_logits: ', start_logits.size())
+        print('org end_logits: ', end_logits.size())
+        print('org start_positions: ', start_positions.size())
+        print('org end_positions: ', end_positions.size())
+        start_logits = start_logits.squeeze(-1)
+        end_logits = end_logits.squeeze(-1)
+
+        if start_positions is not None and end_positions is not None:
+            # If we are on multi-GPU, split add a dimension
+            # if len(start_positions.size()) > 1:
+            #     start_positions = start_positions.squeeze(-1)
+            # if len(end_positions.size()) > 1:
+            #     end_positions = end_positions.squeeze(-1)
+            # sometimes the start/end positions are outside our model inputs, we ignore these terms
+            # ignored_index = start_logits.size(1)
+            # start_positions.clamp_(0, ignored_index)
+            # end_positions.clamp_(0, ignored_index)
+
+            print('start_logits: ', start_logits.size(), start_logits)
+            print('end_logits: ', end_logits.size(), end_logits)
+            print('start_positions: ', start_positions.size(), start_positions)
+            print('end_positions: ', end_positions, end_positions.size(), end_positions)
+            # print('ignored_index:', ignored_index)
+            print('---------------------------------------------------')
+            # loss_fct = CrossEntropyLoss(ignore_index=ignored_index)
+            # loss_fct = BCELoss()
+            loss_fct = BCEWithLogitsLoss()
+            start_loss = loss_fct(start_logits, start_positions)
+            end_loss = loss_fct(end_logits, end_positions)
+            total_loss = (start_loss + end_loss) / 2
+            return total_loss
+        else:
+            return start_logits, end_logits
+
+
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -986,8 +1045,16 @@ def main():
         all_input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long)
         all_input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long)
         all_segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long)
-        all_start_positions = torch.tensor([f.start_position for f in train_features], dtype=torch.long)
-        all_end_positions = torch.tensor([f.end_position for f in train_features], dtype=torch.long)
+
+        # all_start_positions = torch.tensor([f.start_position for f in train_features], dtype=torch.long)
+        # all_end_positions = torch.tensor([f.end_position for f in train_features], dtype=torch.long)
+
+        all_start_positions = torch.zeros([len(train_features), args.max_seq_length], dtype=torch.float)
+        all_end_positions = torch.zeros([len(train_features), args.max_seq_length], dtype=torch.float)
+        for i, f in enumerate(train_features):
+            all_start_positions[i][f.start_position] = 1
+            all_end_positions[i][f.end_position] = 1
+
         train_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids,
                                    all_start_positions, all_end_positions)
         if args.local_rank == -1:
@@ -1002,6 +1069,11 @@ def main():
                 if n_gpu == 1:
                     batch = tuple(t.to(device) for t in batch) # multi-gpu does scattering it-self
                 input_ids, input_mask, segment_ids, start_positions, end_positions = batch
+
+                print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+                print(start_positions)
+                print(end_positions)
+                print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
                 loss = model(input_ids, segment_ids, input_mask, start_positions, end_positions)
                 if n_gpu > 1:
                     loss = loss.mean() # mean() to average on multi-gpu.
