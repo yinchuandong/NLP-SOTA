@@ -38,23 +38,31 @@ logger = logging.getLogger(__name__)
 
 class BertQAModel(BertPreTrainedModel):
     def __init__(self, config):
-        super(BertForQuestionAnswering, self).__init__(config)
+        super(BertQAModel, self).__init__(config)
         self.bert = BertModel(config)
+
+        self.sigmoid = nn.Sigmoid()
         self.qa_outputs = nn.Linear(config.hidden_size, 2)
         self.apply(self.init_bert_weights)
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, start_positions=None, end_positions=None):
+    def forward(self,
+                input_ids,
+                token_type_ids=None,
+                attention_mask=None,
+                start_positions=None,
+                end_positions=None):
         sequence_output, pooled_output = self.bert(
-            input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+            input_ids, token_type_ids, attention_mask,
+            output_all_encoded_layers=False)
         logits = self.qa_outputs(sequence_output)
-        logits = nn.Sigmoid(logits)
+        logits = self.sigmoid(logits)
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1)
         end_logits = end_logits.squeeze(-1)
 
         if start_positions is not None and end_positions is not None:
-            # loss_fct = BCELoss()
-            loss_fct = BCEWithLogitsLoss()
+            loss_fct = BCELoss()
+            # loss_fct = BCEWithLogitsLoss()
             start_loss = loss_fct(start_logits, start_positions)
             end_loss = loss_fct(end_logits, end_positions)
             total_loss = (start_loss + end_loss) / 2
@@ -117,12 +125,13 @@ class BertQAEstimator(object):
         self.with_negative = with_negative
         self.warmup_proportion = warmup_proportion
         self.gradient_accumulation_steps = gradient_accumulation_steps
+        self.seed = seed
 
         self.device = torch.device(
             'cuda' if torch.cuda.is_available() and not self.no_cuda else 'cpu')
         self.n_gpu = torch.cuda.device_count()
 
-        logger.info('device: {} n_gpu: {}'.format(device, self.n_gpu))
+        logger.info('device: {} n_gpu: {}'.format(self.device, self.n_gpu))
 
         random.seed(self.seed)
         np.random.seed(self.seed)
@@ -146,18 +155,18 @@ class BertQAEstimator(object):
             train_features = convert_examples_to_features(
                 examples=train_examples,
                 tokenizer=tokenizer,
-                max_seq_length=args.max_seq_length,
-                doc_stride=args.doc_stride,
-                max_query_length=args.max_query_length,
+                max_seq_length=self.max_seq_length,
+                doc_stride=self.doc_stride,
+                max_query_length=self.max_query_length,
                 is_training=True)
             logger.info('Saving train features into cached file %s',
                         cached_train_features_file)
             with open(cached_train_features_file, 'wb') as writer:
                 pickle.dump(train_features, writer)
-        return features
+        return train_features
 
     def _init_optimizer(self, train_steps):
-        param_optimizer = list(model.named_parameters())
+        param_optimizer = list(self.model.named_parameters())
         # hack to remove pooler, which is not used
         # thus it produce None grad that break apex
         param_optimizer = [n for n in param_optimizer if 'pooler' not in n[0]]
@@ -184,7 +193,7 @@ class BertQAEstimator(object):
         train_steps = int(len(train_examples) / batch_size /
                           self.gradient_accumulation_steps) * epochs
 
-        self.model = BertQAEstimator.from_pretrained(self.bert_base_model_path)
+        self.model = BertQAModel.from_pretrained(self.bert_base_model_path)
         self.model.to(self.device)
 
         optimizer = self._init_optimizer(train_steps)
@@ -198,9 +207,9 @@ class BertQAEstimator(object):
         all_segment_ids = torch.tensor(
             [f.segment_ids for f in train_features], dtype=torch.long)
         all_start_positions = torch.zeros(
-            [len(train_features), args.max_seq_length], dtype=torch.float)
+            [len(train_features), self.max_seq_length], dtype=torch.float)
         all_end_positions = torch.zeros(
-            [len(train_features), args.max_seq_length], dtype=torch.float)
+            [len(train_features), self.max_seq_length], dtype=torch.float)
         for i, f in enumerate(train_features):
             all_start_positions[i][f.start_position] = 1
             all_end_positions[i][f.end_position] = 1
@@ -209,7 +218,7 @@ class BertQAEstimator(object):
                                    all_start_positions, all_end_positions)
         train_sampler = RandomSampler(train_data)
         train_dataloader = DataLoader(
-            train_data, sampler=train_sampler, batch_size=args.train_batch_size)
+            train_data, sampler=train_sampler, batch_size=batch_size)
 
         global_step = 0
         self.model.train()
@@ -224,7 +233,7 @@ class BertQAEstimator(object):
                 # print(end_positions)
                 # print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
                 loss = self.model(input_ids, segment_ids, input_mask,
-                             start_positions, end_positions)
+                                  start_positions, end_positions)
                 if self.gradient_accumulation_steps > 1:
                     loss = loss / self.gradient_accumulation_steps
 
@@ -234,5 +243,26 @@ class BertQAEstimator(object):
                     optimizer.zero_grad()
                     global_step += 1
         return
+
+    def evaluate(self, dev):
+
+        return
+
+    def predict(self, data):
+        return
+
+# %%
+
+
+def main():
+    model = BertQAEstimator()
+    model.fit(train_file='./squad/simple/train-v1.1.json',
+              dev_file='./squad/simple/dev-v1.1.json',
+              epochs=1,
+              batch_size=1)
+    return
+
+
+main()
 
 # %%

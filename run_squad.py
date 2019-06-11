@@ -319,7 +319,7 @@ if args.do_train:
                 "  Saving train features into cached file %s", cached_train_features_file)
             with open(cached_train_features_file, "wb") as writer:
                 pickle.dump(train_features, writer)
-   logger.info("***** Running training *****")
+    logger.info("***** Running training *****")
     logger.info("  Num orig examples = %d", len(train_examples))
     logger.info("  Num split examples = %d", len(train_features))
     logger.info("  Batch size = %d", args.train_batch_size)

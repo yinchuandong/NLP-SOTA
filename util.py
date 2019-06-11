@@ -6,6 +6,7 @@ import os
 import random
 import sys
 from io import open
+import pickle
 
 import numpy as np
 import torch
@@ -18,17 +19,13 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 
 from pytorch_pretrained_bert.file_utils import PYTORCH_PRETRAINED_BERT_CACHE, WEIGHTS_NAME, CONFIG_NAME
-# from pytorch_pretrained_bert.modeling import BertForQuestionAnswering, BertConfig
 from pytorch_pretrained_bert.modeling import BertModel, BertPreTrainedModel, BertConfig
 from pytorch_pretrained_bert.optimization import BertAdam, WarmupLinearSchedule
 from pytorch_pretrained_bert.tokenization import (BasicTokenizer,
                                                   BertTokenizer,
                                                   whitespace_tokenize)
 
-if sys.version_info[0] == 2:
-    import cPickle as pickle
-else:
-    import pickle
+
 
 logger = logging.getLogger(__name__)
 
