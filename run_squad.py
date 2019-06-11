@@ -776,17 +776,17 @@ class BertForQuestionAnswering(BertPreTrainedModel):
         self.apply(self.init_bert_weights)
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, start_positions=None, end_positions=None):
-        print('---------------------------------------------------')
         sequence_output, pooled_output = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
         logits = self.qa_outputs(sequence_output)
         start_logits, end_logits = logits.split(1, dim=-1)
-        print('sequence_output: ', sequence_output.size())
-        print('pool: ', pooled_output.size())
-        print('org logits: ', logits.size())
-        print('org start_logits: ', start_logits.size())
-        print('org end_logits: ', end_logits.size())
-        print('org start_positions: ', start_positions.size())
-        print('org end_positions: ', end_positions.size())
+        # print('---------------------------------------------------')
+        # print('sequence_output: ', sequence_output.size())
+        # print('pool: ', pooled_output.size())
+        # print('org logits: ', logits.size())
+        # print('org start_logits: ', start_logits.size())
+        # print('org end_logits: ', end_logits.size())
+        # print('org start_positions: ', start_positions.size())
+        # print('org end_positions: ', end_positions.size())
         start_logits = start_logits.squeeze(-1)
         end_logits = end_logits.squeeze(-1)
 
@@ -801,12 +801,12 @@ class BertForQuestionAnswering(BertPreTrainedModel):
             # start_positions.clamp_(0, ignored_index)
             # end_positions.clamp_(0, ignored_index)
 
-            print('start_logits: ', start_logits.size(), start_logits)
-            print('end_logits: ', end_logits.size(), end_logits)
-            print('start_positions: ', start_positions.size(), start_positions)
-            print('end_positions: ', end_positions, end_positions.size(), end_positions)
+            # print('start_logits: ', start_logits.size(), start_logits)
+            # print('end_logits: ', end_logits.size(), end_logits)
+            # print('start_positions: ', start_positions.size(), start_positions)
+            # print('end_positions: ', end_positions, end_positions.size(), end_positions)
             # print('ignored_index:', ignored_index)
-            print('---------------------------------------------------')
+            # print('---------------------------------------------------')
             # loss_fct = CrossEntropyLoss(ignore_index=ignored_index)
             # loss_fct = BCELoss()
             loss_fct = BCEWithLogitsLoss()
@@ -1070,10 +1070,10 @@ def main():
                     batch = tuple(t.to(device) for t in batch) # multi-gpu does scattering it-self
                 input_ids, input_mask, segment_ids, start_positions, end_positions = batch
 
-                print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
-                print(start_positions)
-                print(end_positions)
-                print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+                # print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+                # print(start_positions)
+                # print(end_positions)
+                # print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
                 loss = model(input_ids, segment_ids, input_mask, start_positions, end_positions)
                 if n_gpu > 1:
                     loss = loss.mean() # mean() to average on multi-gpu.

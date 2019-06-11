@@ -32,6 +32,6 @@ tmp-*
 
 # trainer
 bert
-debug_squad
+debug_squad*
 squad
 data
