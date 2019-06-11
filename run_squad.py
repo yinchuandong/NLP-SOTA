@@ -56,17 +56,17 @@ def load_args():
     parser = argparse.ArgumentParser()
 
     # Required parameters
-    parser.add_argument("--bert_model", default=None, type=str, required=True,
+    parser.add_argument("--bert_model", default='./bert/bert-base-uncased', type=str,
                         help="Bert pre-trained model selected in the list: bert-base-uncased, "
                         "bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, "
                         "bert-base-multilingual-cased, bert-base-chinese.")
-    parser.add_argument("--output_dir", default=None, type=str, required=True,
+    parser.add_argument("--output_dir", default='./debug_squad', type=str,
                         help="The output directory where the model checkpoints and predictions will be written.")
 
     # Other parameters
-    parser.add_argument("--train_file", default=None, type=str,
+    parser.add_argument("--train_file", default='./squad/simple/train-v1.1.json', type=str,
                         help="SQuAD json for training. E.g., train-v1.1.json")
-    parser.add_argument("--predict_file", default=None, type=str,
+    parser.add_argument("--predict_file", default='./squad/simple/dev-v1.1.json', type=str,
                         help="SQuAD json for predictions. E.g., dev-v1.1.json or test-v1.1.json")
     parser.add_argument("--max_seq_length", default=384, type=int,
                         help="The maximum total input sequence length after WordPiece tokenization. Sequences "
@@ -76,13 +76,13 @@ def load_args():
     parser.add_argument("--max_query_length", default=64, type=int,
                         help="The maximum number of tokens for the question. Questions longer than this will "
                              "be truncated to this length.")
-    parser.add_argument("--do_train", action='store_true',
+    parser.add_argument("--do_train", action='store_true', default=True,
                         help="Whether to run training.")
-    parser.add_argument("--do_predict", action='store_true',
+    parser.add_argument("--do_predict", action='store_true', default=True,
                         help="Whether to run eval on the dev set.")
-    parser.add_argument("--train_batch_size", default=32,
+    parser.add_argument("--train_batch_size", default=2,
                         type=int, help="Total batch size for training.")
-    parser.add_argument("--predict_batch_size", default=8,
+    parser.add_argument("--predict_batch_size", default=1,
                         type=int, help="Total batch size for predictions.")
     parser.add_argument("--learning_rate", default=5e-5,
                         type=float, help="The initial learning rate for Adam.")
@@ -118,9 +118,6 @@ def load_args():
                         type=int,
                         default=-1,
                         help="local_rank for distributed training on gpus")
-    parser.add_argument('--fp16',
-                        action='store_true',
-                        help="Whether to use 16-bit float precision instead of 32-bit")
     parser.add_argument('--loss_scale',
                         type=float, default=0,
                         help="Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True.\n"
@@ -136,7 +133,7 @@ def load_args():
                         help="Can be used for distant debugging.")
     parser.add_argument('--server_port', type=str, default='',
                         help="Can be used for distant debugging.")
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
 
 
     if args.server_ip and args.server_port:
@@ -162,8 +159,8 @@ def load_args():
                         datefmt='%m/%d/%Y %H:%M:%S',
                         level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN)
 
-    logger.info("device: {} n_gpu: {}, distributed training: {}, 16-bits training: {}".format(
-        args.device, args.n_gpu, bool(args.local_rank != -1), args.fp16))
+    logger.info("device: {} n_gpu: {}, distributed training: {}".format(
+        args.device, args.n_gpu, bool(args.local_rank != -1)))
 
     if args.gradient_accumulation_steps < 1:
         raise ValueError("Invalid gradient_accumulation_steps parameter: {}, should be >= 1".format(
@@ -199,7 +196,7 @@ def load_args():
     print('=======================================================================')
     print(args)
     print('=======================================================================')
-    return args 
+    return args
 
 
 class BertForQuestionAnswering(BertPreTrainedModel):
@@ -258,6 +255,7 @@ class BertForQuestionAnswering(BertPreTrainedModel):
 # %%
 
 args = load_args()
+
 
 tokenizer = BertTokenizer.from_pretrained(
     args.bert_model, do_lower_case=args.do_lower_case)
@@ -321,11 +319,11 @@ if args.do_train:
                 "  Saving train features into cached file %s", cached_train_features_file)
             with open(cached_train_features_file, "wb") as writer:
                 pickle.dump(train_features, writer)
-    logger.info("***** Running training *****")
+   logger.info("***** Running training *****")
     logger.info("  Num orig examples = %d", len(train_examples))
     logger.info("  Num split examples = %d", len(train_features))
     logger.info("  Batch size = %d", args.train_batch_size)
-    logger.info("  Num steps = %d", num_train_optimization_steps)
+    logger.info("  Num steps = %d", num_train_optimization_steps) 
     all_input_ids = torch.tensor(
         [f.input_ids for f in train_features], dtype=torch.long)
     all_input_mask = torch.tensor(
@@ -377,7 +375,8 @@ if args.do_train:
                 optimizer.step()
                 optimizer.zero_grad()
                 global_step += 1
-
+            
+# %%
 if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
     # Save a trained model, configuration and tokenizer
     model_to_save = model.module if hasattr(
@@ -463,5 +462,3 @@ if args.do_predict and (args.local_rank == -1 or torch.distributed.get_rank() ==
                         args.do_lower_case, output_prediction_file,
                         output_nbest_file, output_null_log_odds_file, args.verbose_logging,
                         args.version_2_with_negative, args.null_score_diff_threshold)
-
-
