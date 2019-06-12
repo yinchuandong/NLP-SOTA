@@ -217,6 +217,8 @@ class BertQAEstimator(object):
             [len(train_features), self.max_seq_length], dtype=torch.float)
         all_end_positions = torch.zeros(
             [len(train_features), self.max_seq_length], dtype=torch.float)
+
+        # TODO: multiple start_positions and end_positions
         for i, f in enumerate(train_features):
             all_start_positions[i][f.start_position] = 1
             all_end_positions[i][f.end_position] = 1
