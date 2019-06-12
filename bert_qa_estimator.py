@@ -31,7 +31,7 @@ from pytorch_pretrained_bert.tokenization import (BasicTokenizer,
                                                   whitespace_tokenize)
 
 
-from util import (read_squad_examples, convert_examples_to_features)
+from preprocessing import (read_squad_examples, convert_examples_to_features)
 
 logger = logging.getLogger(__name__)
 
@@ -201,7 +201,7 @@ class BertQAEstimator(object):
         train_steps = int(len(train_examples) / batch_size /
                           self.gradient_accumulation_steps) * epochs
 
-        self.model = BertQAModel.from_pretrained(pretrained_model_path)
+        self.restore(pretrained_model_path)
         self.model.to(self.device)
 
         optimizer = self._init_optimizer(train_steps)
@@ -249,6 +249,8 @@ class BertQAEstimator(object):
                     optimizer.step()
                     optimizer.zero_grad()
                     global_step += 1
+                # ---------------------------------
+                break
         return
 
     def save(self, output_dir):
@@ -257,8 +259,12 @@ class BertQAEstimator(object):
             output_dir: (str), directory to save model, config, and tokenizers
         """
 
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
         # Only save the model it-self
-        model_to_save = model.module if hasattr(model, 'module') else model
+        model_to_save = self.model.module if hasattr(
+            self.model, 'module') else self.model
 
         # If we save using the predefined names, we can load using `from_pretrained`
         output_model_file = os.path.join(output_dir, WEIGHTS_NAME)
@@ -266,7 +272,7 @@ class BertQAEstimator(object):
 
         torch.save(model_to_save.state_dict(), output_model_file)
         model_to_save.config.to_json_file(output_config_file)
-        tokenizer.save_vocabulary(output_dir)
+        self.tokenizer.save_vocabulary(output_dir)
         return
 
     def restore(self, output_dir):
@@ -290,16 +296,16 @@ class BertQAEstimator(object):
 # %%
 
 
-def main():
-    model = BertQAEstimator()
-    model.fit(train_file='./squad/simple/train-v1.1.json',
+estimator = BertQAEstimator()
+# %%
+estimator.fit(train_file='./squad/simple/train-v1.1.json',
               dev_file='./squad/simple/dev-v1.1.json',
               epochs=1,
-              batch_size=1)
+              batch_size=1,
+              pretrained_model_path='./bert/bert-base-uncased')
 
-    return
+# %%
+estimator.save('./debug_squad_v1.1')
 
-
-main()
 
 # %%
