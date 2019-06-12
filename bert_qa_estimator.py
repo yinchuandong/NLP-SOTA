@@ -30,8 +30,11 @@ from pytorch_pretrained_bert.tokenization import (BasicTokenizer,
                                                   BertTokenizer,
                                                   whitespace_tokenize)
 
+from preprocessing import (read_squad_examples,
+                           convert_examples_to_features,
+                           write_predictions,
+                           RawResult)
 
-from preprocessing import (read_squad_examples, convert_examples_to_features)
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +215,20 @@ class BertQAEstimator(object):
             version_2_with_negative=self.with_negative)
         eval_features = self._load_feature(eval_file, eval_examples, False)
 
+        logger.info("***** Training *****")
+        logger.info("  Num orig examples = %d", len(train_examples))
+        logger.info("  Num split examples = %d", len(train_features))
+
+        logger.info("***** Evaluation *****")
+        logger.info("  Num orig examples = %d", len(eval_examples))
+        logger.info("  Num split examples = %d", len(eval_features))
+
+        self.evaluate(eval_features, batch_size)
+        self.train_examples = train_examples
+        self.train_features = train_features
+        self.eval_examples = eval_examples
+        self.eval_features = eval_features
+        return
 
         train_steps = int(len(train_examples) / batch_size /
                           self.gradient_accumulation_steps) * epochs
@@ -265,6 +282,7 @@ class BertQAEstimator(object):
                     global_step += 1
                 # ---------------------------------
                 break
+
         return
 
     def save(self, output_dir):
@@ -300,14 +318,9 @@ class BertQAEstimator(object):
             output_dir, do_lower_case=self.do_lower_case)
         return
 
-    def evaluate(self, eval_features):
+    def evaluate(self, eval_features, batch_size):
 
         self.model.to(self.device)
-
-        logger.info("***** Running predictions *****")
-        logger.info("  Num orig examples = %d", len(eval_examples))
-        logger.info("  Num split examples = %d", len(eval_features))
-        logger.info("  Batch size = %d", args.predict_batch_size)
 
         all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
         all_input_mask = torch.tensor([f.input_mask for f in eval_features], dtype=torch.long)
@@ -316,13 +329,39 @@ class BertQAEstimator(object):
         eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_example_index)
         # Run prediction for full data
         eval_sampler = SequentialSampler(eval_data)
-        eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args.predict_batch_size)
+        eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=batch_size)
 
-        model.eval()
+        self.model.eval()
+        all_results = []
+        logger.info("Start evaluating")
+        for input_ids, input_mask, segment_ids, example_indices in tqdm(eval_dataloader, desc="Evaluating"):
+            if len(all_results) % 1000 == 0:
+                logger.info("Processing example: %d" % (len(all_results)))
 
+            input_ids = input_ids.to(self.device)
+            input_mask = input_mask.to(self.device)
+            segment_ids = segment_ids.to(self.device)
+
+            with torch.no_grad():
+                batch_start_logits, batch_end_logits = self.model(
+                    input_ids, segment_ids, input_mask)
+
+            print('example_indices:', example_indices)
+
+            for i, example_index in enumerate(example_indices):
+                start_logits = batch_start_logits[i].detach().cpu().tolist()
+                end_logits = batch_end_logits[i].detach().cpu().tolist()
+                eval_feature = eval_features[example_index.item()]
+                unique_id = int(eval_feature.unique_id)
+                all_results.append(RawResult(unique_id=unique_id,
+                                         start_logits=start_logits,
+                                         end_logits=end_logits))
+            # break
+            break
+        self.all_results = all_results
         return
 
-    def predict(self, data):
+    def predict(self, contexts, questions):
         return
 
 # %%
@@ -333,11 +372,22 @@ estimator = BertQAEstimator()
 estimator.fit(train_file='./squad/simple/train-v1.1.json',
               eval_file='./squad/simple/dev-v1.1.json',
               epochs=1,
-              batch_size=1,
+              batch_size=2,
               pretrained_model_path='./bert/bert-base-uncased')
+
+# %%
+
+len(estimator.train_examples)
+len(estimator.train_features)
+len(estimator.eval_examples)
+len(estimator.eval_features)
+
+start_logits = np.array(estimator.all_results[0].start_logits)
 
 # %%
 estimator.save('./debug_squad_v1.1')
 
+
+# %%
 
 # %%

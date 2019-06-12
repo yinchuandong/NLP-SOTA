@@ -47,7 +47,10 @@ from pytorch_pretrained_bert.tokenization import (BasicTokenizer,
                                                   whitespace_tokenize)
 
 
-from util import (read_squad_examples, convert_examples_to_features)
+from preprocessing import (read_squad_examples,
+                           convert_examples_to_features,
+                           write_predictions,
+                           RawResult)
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +137,6 @@ def load_args():
     parser.add_argument('--server_port', type=str, default='',
                         help="Can be used for distant debugging.")
     args, unknown = parser.parse_known_args()
-
 
     if args.server_ip and args.server_port:
         # Distant debugging - see https://code.visualstudio.com/docs/python/debugging#_attach-to-a-local-script
@@ -272,7 +274,7 @@ if args.do_train:
 
 # Prepare model
 model = BertForQuestionAnswering.from_pretrained(args.bert_model,
-                                                    cache_dir=os.path.join(str(PYTORCH_PRETRAINED_BERT_CACHE), 'distributed_{}'.format(args.local_rank)))
+                                                 cache_dir=os.path.join(str(PYTORCH_PRETRAINED_BERT_CACHE), 'distributed_{}'.format(args.local_rank)))
 
 model.to(args.device)
 
@@ -292,9 +294,9 @@ if args.do_train:
             nd in n for nd in no_decay)], 'weight_decay': 0.0}
     ]
     optimizer = BertAdam(optimizer_grouped_parameters,
-                            lr=args.learning_rate,
-                            warmup=args.warmup_proportion,
-                            t_total=num_train_optimization_steps)
+                         lr=args.learning_rate,
+                         warmup=args.warmup_proportion,
+                         t_total=num_train_optimization_steps)
 
 
 # %% training
@@ -323,7 +325,7 @@ if args.do_train:
     logger.info("  Num orig examples = %d", len(train_examples))
     logger.info("  Num split examples = %d", len(train_features))
     logger.info("  Batch size = %d", args.train_batch_size)
-    logger.info("  Num steps = %d", num_train_optimization_steps) 
+    logger.info("  Num steps = %d", num_train_optimization_steps)
     all_input_ids = torch.tensor(
         [f.input_ids for f in train_features], dtype=torch.long)
     all_input_mask = torch.tensor(
@@ -343,7 +345,7 @@ if args.do_train:
         all_end_positions[i][f.end_position] = 1
 
     train_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids,
-                                all_start_positions, all_end_positions)
+                               all_start_positions, all_end_positions)
     if args.local_rank == -1:
         train_sampler = RandomSampler(train_data)
     else:
@@ -364,7 +366,7 @@ if args.do_train:
             # print(end_positions)
             # print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
             loss = model(input_ids, segment_ids, input_mask,
-                            start_positions, end_positions)
+                         start_positions, end_positions)
             if args.n_gpu > 1:
                 loss = loss.mean()  # mean() to average on multi-gpu.
             if args.gradient_accumulation_steps > 1:
@@ -375,7 +377,7 @@ if args.do_train:
                 optimizer.step()
                 optimizer.zero_grad()
                 global_step += 1
-            
+
 # %%
 if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
     # Save a trained model, configuration and tokenizer
@@ -449,8 +451,8 @@ if args.do_predict and (args.local_rank == -1 or torch.distributed.get_rank() ==
             eval_feature = eval_features[example_index.item()]
             unique_id = int(eval_feature.unique_id)
             all_results.append(RawResult(unique_id=unique_id,
-                                            start_logits=start_logits,
-                                            end_logits=end_logits))
+                                         start_logits=start_logits,
+                                         end_logits=end_logits))
     output_prediction_file = os.path.join(
         args.output_dir, "predictions.json")
     output_nbest_file = os.path.join(
@@ -458,7 +460,7 @@ if args.do_predict and (args.local_rank == -1 or torch.distributed.get_rank() ==
     output_null_log_odds_file = os.path.join(
         args.output_dir, "null_odds.json")
     write_predictions(eval_examples, eval_features, all_results,
-                        args.n_best_size, args.max_answer_length,
-                        args.do_lower_case, output_prediction_file,
-                        output_nbest_file, output_null_log_odds_file, args.verbose_logging,
-                        args.version_2_with_negative, args.null_score_diff_threshold)
+                      args.n_best_size, args.max_answer_length,
+                      args.do_lower_case, output_prediction_file,
+                      output_nbest_file, output_null_log_odds_file, args.verbose_logging,
+                      args.version_2_with_negative, args.null_score_diff_threshold)
