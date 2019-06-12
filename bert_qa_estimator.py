@@ -84,7 +84,8 @@ class BertQAEstimator(object):
                  learning_rate=5e-5,
                  warmup_proportion=0.1,
                  gradient_accumulation_steps=1,
-                 seed=42):
+                 seed=42,
+                 use_gpu=False):
         """
         Args:
             bert_base_model: (str), Bert pre-trained model path,
@@ -112,7 +113,8 @@ class BertQAEstimator(object):
                 linear learning rate warmup for. E.g., 0.1 = 10%% of training.
             gradient_accumulation_steps: (int), Number of updates steps to
                 accumulate before performing a backward/update pass.
-            seed: (bool) random seed for initialization
+            seed: (bool), random seed for initialization
+            use_gpu: (bool), whether use GPU
         """
 
         self.bert_base_model = bert_base_model
@@ -126,9 +128,10 @@ class BertQAEstimator(object):
         self.warmup_proportion = warmup_proportion
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.seed = seed
+        self.use_gpu = use_gpu
 
         self.device = torch.device(
-            'cuda' if torch.cuda.is_available() and not self.no_cuda else 'cpu')
+            'cuda' if torch.cuda.is_available() and self.use_gpu else 'cpu')
         self.n_gpu = torch.cuda.device_count()
 
         logger.info('device: {} n_gpu: {}'.format(self.device, self.n_gpu))
@@ -143,29 +146,28 @@ class BertQAEstimator(object):
         self.tokenizer = None
         return
 
-    def _load_feature(self, train_file, train_examples):
-        cached_train_features_file = train_file + '_{0}_{1}_{2}_{3}'.format(
+    def _load_feature(self, data_file, data_examples, is_training):
+        cached_features_file = data_file + '_{0}_{1}_{2}_{3}'.format(
             self.bert_base_model,
             str(self.max_seq_length),
             str(self.doc_stride),
             str(self.max_query_length))
-        train_features = None
+        features = None
         try:
-            with open(cached_train_features_file, 'rb') as reader:
-                train_features = pickle.load(reader)
+            with open(cached_features_file, 'rb') as reader:
+                features = pickle.load(reader)
         except:
-            train_features = convert_examples_to_features(
-                examples=train_examples,
+            features = convert_examples_to_features(
+                examples=data_examples,
                 tokenizer=self.tokenizer,
                 max_seq_length=self.max_seq_length,
                 doc_stride=self.doc_stride,
                 max_query_length=self.max_query_length,
-                is_training=True)
-            logger.info('Saving train features into cached file %s',
-                        cached_train_features_file)
-            with open(cached_train_features_file, 'wb') as writer:
-                pickle.dump(train_features, writer)
-        return train_features
+                is_training=is_training)
+            logger.info('Saving features into cached file %s', cached_features_file)
+            with open(cached_features_file, 'wb') as writer:
+                pickle.dump(features, writer)
+        return features
 
     def _init_optimizer(self, train_steps):
         param_optimizer = list(self.model.named_parameters())
@@ -189,23 +191,33 @@ class BertQAEstimator(object):
 
     def fit(self,
             train_file,
-            dev_file,
+            eval_file,
             epochs,
             batch_size,
             pretrained_model_path):
+
+        # restore model first
+        self.restore(pretrained_model_path)
+        self.model.to(self.device)
 
         train_examples = read_squad_examples(
             input_file=train_file,
             is_training=True,
             version_2_with_negative=self.with_negative)
+        train_features = self._load_feature(train_file, train_examples, True)
+
+        eval_examples = read_squad_examples(
+            input_file=eval_file,
+            is_training=False,
+            version_2_with_negative=self.with_negative)
+        eval_features = self._load_feature(eval_file, eval_examples, False)
+
+
         train_steps = int(len(train_examples) / batch_size /
                           self.gradient_accumulation_steps) * epochs
 
-        self.restore(pretrained_model_path)
-        self.model.to(self.device)
 
         optimizer = self._init_optimizer(train_steps)
-        train_features = self._load_feature(train_file, train_examples)
 
         all_input_ids = torch.tensor(
             [f.input_ids for f in train_features], dtype=torch.long)
@@ -288,7 +300,25 @@ class BertQAEstimator(object):
             output_dir, do_lower_case=self.do_lower_case)
         return
 
-    def evaluate(self, dev):
+    def evaluate(self, eval_features):
+
+        self.model.to(self.device)
+
+        logger.info("***** Running predictions *****")
+        logger.info("  Num orig examples = %d", len(eval_examples))
+        logger.info("  Num split examples = %d", len(eval_features))
+        logger.info("  Batch size = %d", args.predict_batch_size)
+
+        all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
+        all_input_mask = torch.tensor([f.input_mask for f in eval_features], dtype=torch.long)
+        all_segment_ids = torch.tensor([f.segment_ids for f in eval_features], dtype=torch.long)
+        all_example_index = torch.arange(all_input_ids.size(0), dtype=torch.long)
+        eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_example_index)
+        # Run prediction for full data
+        eval_sampler = SequentialSampler(eval_data)
+        eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args.predict_batch_size)
+
+        model.eval()
 
         return
 
@@ -297,11 +327,11 @@ class BertQAEstimator(object):
 
 # %%
 
-
 estimator = BertQAEstimator()
-# %%
+
+
 estimator.fit(train_file='./squad/simple/train-v1.1.json',
-              dev_file='./squad/simple/dev-v1.1.json',
+              eval_file='./squad/simple/dev-v1.1.json',
               epochs=1,
               batch_size=1,
               pretrained_model_path='./bert/bert-base-uncased')
