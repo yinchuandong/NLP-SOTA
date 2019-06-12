@@ -74,7 +74,7 @@ class BertQAModel(BertPreTrainedModel):
 class BertQAEstimator(object):
 
     def __init__(self,
-                 bert_base_model_path='./bert/bert-base-uncased',
+                 bert_base_model='bert-base-uncased',
                  max_seq_length=384,
                  doc_stride=128,
                  max_query_length=64,
@@ -87,7 +87,7 @@ class BertQAEstimator(object):
                  seed=42):
         """
         Args:
-            bert_base_model_path: (str), Bert pre-trained model path,
+            bert_base_model: (str), Bert pre-trained model path,
                 selected in the list:
                     bert-base-uncased, bert-large-uncased, bert-base-cased,
                     bert-large-cased, bert-base-multilingual-uncased,
@@ -115,7 +115,7 @@ class BertQAEstimator(object):
             seed: (bool) random seed for initialization
         """
 
-        self.bert_base_model_path = bert_base_model_path
+        self.bert_base_model = bert_base_model
         self.max_seq_length = max_seq_length
         self.doc_stride = doc_stride
         self.max_query_length = max_query_length
@@ -140,12 +140,14 @@ class BertQAEstimator(object):
             torch.cuda.manual_seed_all(self.seed)
 
         self.model = None
+        self.tokenizer = None
         return
 
-    def _load_feature(self, train_file, bert_base_model_path):
+    def _load_feature(self, train_file, train_examples):
         cached_train_features_file = train_file + '_{0}_{1}_{2}_{3}'.format(
-            list(filter(None, bert_base_model_path.split('/'))).pop(),
-            str(self.max_seq_length), str(self.doc_stride),
+            self.bert_base_model,
+            str(self.max_seq_length),
+            str(self.doc_stride),
             str(self.max_query_length))
         train_features = None
         try:
@@ -154,7 +156,7 @@ class BertQAEstimator(object):
         except:
             train_features = convert_examples_to_features(
                 examples=train_examples,
-                tokenizer=tokenizer,
+                tokenizer=self.tokenizer,
                 max_seq_length=self.max_seq_length,
                 doc_stride=self.doc_stride,
                 max_query_length=self.max_query_length,
@@ -178,13 +180,19 @@ class BertQAEstimator(object):
             {'params': [p for n, p in param_optimizer if any(
                 nd in n for nd in no_decay)], 'weight_decay': 0.0}
         ]
-        optimizer = BertAdam(optimizer_grouped_parameters,
-                             lr=self.learning_rate,
-                             warmup=self.warmup_proportion,
-                             t_total=train_steps)
+        optimizer = BertAdam(
+            optimizer_grouped_parameters,
+            lr=self.learning_rate,
+            warmup=self.warmup_proportion,
+            t_total=train_steps)
         return optimizer
 
-    def fit(self, train_file, dev_file, epochs, batch_size):
+    def fit(self,
+            train_file,
+            dev_file,
+            epochs,
+            batch_size,
+            pretrained_model_path):
 
         train_examples = read_squad_examples(
             input_file=train_file,
@@ -193,12 +201,11 @@ class BertQAEstimator(object):
         train_steps = int(len(train_examples) / batch_size /
                           self.gradient_accumulation_steps) * epochs
 
-        self.model = BertQAModel.from_pretrained(self.bert_base_model_path)
+        self.model = BertQAModel.from_pretrained(pretrained_model_path)
         self.model.to(self.device)
 
         optimizer = self._init_optimizer(train_steps)
-        train_features = self._load_feature(
-            train_file, self.bert_base_model_path)
+        train_features = self._load_feature(train_file, train_examples)
 
         all_input_ids = torch.tensor(
             [f.input_ids for f in train_features], dtype=torch.long)
@@ -244,6 +251,35 @@ class BertQAEstimator(object):
                     global_step += 1
         return
 
+    def save(self, output_dir):
+        """ Save a trained model, configuration and tokenizer
+        Args:
+            output_dir: (str), directory to save model, config, and tokenizers
+        """
+
+        # Only save the model it-self
+        model_to_save = model.module if hasattr(model, 'module') else model
+
+        # If we save using the predefined names, we can load using `from_pretrained`
+        output_model_file = os.path.join(output_dir, WEIGHTS_NAME)
+        output_config_file = os.path.join(output_dir, CONFIG_NAME)
+
+        torch.save(model_to_save.state_dict(), output_model_file)
+        model_to_save.config.to_json_file(output_config_file)
+        tokenizer.save_vocabulary(output_dir)
+        return
+
+    def restore(self, output_dir):
+        """ Load a trained model and vocabulary that you have fine-tuned
+        Args:
+            output_dir: (str), the directory where you save models
+        """
+
+        self.model = BertQAModel.from_pretrained(output_dir)
+        self.tokenizer = BertTokenizer.from_pretrained(
+            output_dir, do_lower_case=self.do_lower_case)
+        return
+
     def evaluate(self, dev):
 
         return
@@ -260,6 +296,7 @@ def main():
               dev_file='./squad/simple/dev-v1.1.json',
               epochs=1,
               batch_size=1)
+
     return
 
 
