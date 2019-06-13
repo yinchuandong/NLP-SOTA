@@ -8,6 +8,8 @@ cd NLP-SOTA
 pip install .
 ```
 
+Please refer to my another project for end-to-end ML solution, including analysis, model training, model deployment, Flask, Docker, etc. [https://github.com/yinchuandong/sentiment-analysis](https://github.com/yinchuandong/sentiment-analysis).
+
 
 ## Features
 
@@ -24,7 +26,7 @@ pip install .
 
 
 
-## Pre-trained BERT Setup
+## Setup pre-trained BERT
 
 1. Download pretrained BERT model from [https://github.com/google-research/bert#pre-trained-models](https://github.com/google-research/bert#pre-trained-models).
 
@@ -33,7 +35,6 @@ pip install .
     wget https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-12_H-768_A-12.zip
     `unzip uncased_L-12_H-768_A-12.zip
     mv uncased_L-12_H-768_A-12 bert-base-uncased
-    ]
     ```
 
 2. Convert tensorflow model file to pytorch model file
@@ -44,20 +45,26 @@ pip install .
 
 
 ## Question Answering
-The problem formulation is very similar to Stanford Question Answering Dataset (**SQUAD**) [https://rajpurkar.github.io/SQuAD-explorer/](https://rajpurkar.github.io/SQuAD-explorer/). Note that there is also a big difference. In SQUAD dataset, a question either has only one possible answer or is non-answerable. However, our dataset can have multiple answers for a certain question, which makes our dataset more difficult. My solution will focus on this formulation using BERT.
 
+The problem formulation is very similar to Stanford Question Answering Dataset (**SQUAD**) [https://rajpurkar.github.io/SQuAD-explorer/](https://rajpurkar.github.io/SQuAD-explorer/). Given a document and a question, try to extract the possible answers (several tokens or a whole sentence) from the document. Note that there is also a big difference. In SQUAD dataset, a question either has only one possible answer or is non-answerable. However, our dataset can have multiple answers for a certain question, which makes our dataset more difficult. My solution will focus on this formulation using BERT.
+
+### Data format
+
+``` json
+
+```
 
 #### Train model
 ``` python
 
-from nlpsota.questionanswering.bert.estimator import BertQAEstimator
+from nlpsota.questionanswering.bert import BertQAEstimator
 
 # initialize an estimator
 estimator = BertQAEstimator()
 
 # train the model
-estimator.fit(train_file='./squad/simple/train-v1.1.json',
-              eval_file='./squad/simple/dev-v1.1.json',
+estimator.fit(train_file='./example_data/squad_simple/train-v1.1.json',
+              eval_file='./example_data/squad_simple/dev-v1.1.json',
               epochs=1,
               batch_size=2,
               pretrained_model_path='./bert/bert-base-uncased')
@@ -68,7 +75,7 @@ estimator.save('./output/trained-model')
 
 #### Restore a well-trained model
 ``` python
-from nlpsota.questionanswering.bert.estimator import BertQAEstimator
+from nlpsota.questionanswering.bert import BertQAEstimator
 
 # initialize an estimator
 estimator = BertQAEstimator()
