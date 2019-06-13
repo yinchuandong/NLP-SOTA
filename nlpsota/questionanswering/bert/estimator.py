@@ -263,10 +263,11 @@ class BertQAEstimator(object):
         all_end_positions = torch.zeros(
             [len(train_features), self.max_seq_length], dtype=torch.float)
 
-        # TODO: multiple start_positions and end_positions
+        # support multiple start_positions and end_positions
         for i, f in enumerate(train_features):
-            all_start_positions[i][f.start_position] = 1
-            all_end_positions[i][f.end_position] = 1
+            for start_position, end_position in zip(f.start_positions, end_positions):
+                all_start_positions[i][start_position] = 1
+                all_end_positions[i][end_position] = 1
 
         train_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids,
                                    all_start_positions, all_end_positions)
