@@ -44,6 +44,11 @@ Please refer to my another project for end-to-end ML solution, including analysi
     ```
 
 
+## Data Analysis
+Dive into the given dataset and do some visualisation. Please visit [analysis.ipynb](https://github.com/yinchuandong/NLP-SOTA/blob/master/analysis.ipynb)
+for more information.
+
+
 ## Question Answering
 
 The problem formulation is very similar to Stanford Question Answering Dataset (**SQUAD**) [https://rajpurkar.github.io/SQuAD-explorer/](https://rajpurkar.github.io/SQuAD-explorer/). Given a document and a question, try to extract the possible answers (several tokens or a whole sentence) from the document. Note that there is also a big difference. In SQUAD dataset, a question either has only one possible answer or is non-answerable. However, our dataset can have multiple answers for a certain question, which makes our dataset more difficult. My solution will focus on this formulation using BERT.
@@ -106,7 +111,7 @@ estimator.fit(train_file='./example_data/squad_simple/train-v1.1.json',
 estimator.save('./output/trained-model')
 ```
 
-#### Restore a well-trained model
+### Restore a well-trained model
 ``` python
 from nlpsota.questionanswering.bert import BertQAEstimator
 
