@@ -145,3 +145,10 @@ t1[rows, cols] = 1
 
 t1
 # %%
+
+t0 = torch.zeros(2, 4)
+t1 = torch.ones(2, 4)
+
+torch.cat([t0, t1],dim=1)
+
+# %%
