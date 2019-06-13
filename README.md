@@ -50,11 +50,44 @@ The problem formulation is very similar to Stanford Question Answering Dataset (
 
 ### Data format
 
+The following data is the format of SQUAD dataset. We also comply with the SQUAD data format and preprocess the our dataset to match it.
 ``` json
-
+{
+  "data": [
+    {
+      "title": "Super_Bowl_50",
+      "paragraphs": [
+        {
+          "context": "Super Bowl 50 was an American football game to determine the champion of the National Football League (NFL) for the 2015 season. The American Football Conference (AFC) champion Denver Broncos defeated the National Football Conference (NFC) champion Carolina Panthers 24\u201310 to earn their third Super Bowl title. The game was played on February 7, 2016, at Levi's Stadium in the San Francisco Bay Area at Santa Clara, California. As this was the 50th Super Bowl, the league emphasized the \"golden anniversary\" with various gold-themed initiatives, as well as temporarily suspending the tradition of naming each Super Bowl game with Roman numerals (under which the game would have been known as \"Super Bowl L\"), so that the logo could prominently feature the Arabic numerals 50.",
+          "qas": [
+            {
+              "answers": [
+                {
+                  "answer_start": 403,
+                  "text": "Santa Clara, California"
+                },
+                {
+                  "answer_start": 355,
+                  "text": "Levi's Stadium"
+                },
+                {
+                  "answer_start": 355,
+                  "text": "Levi's Stadium in the San Francisco Bay Area at Santa Clara, California."
+                }
+              ],
+              "question": "Where did Super Bowl 50 take place?",
+              "id": "56be4db0acb8001400a502ee"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
 ```
 
-#### Train model
+
+### Model Training
 ``` python
 
 from nlpsota.questionanswering.bert import BertQAEstimator
@@ -89,7 +122,8 @@ estimator.predict(....)
 
 
 ## Text Classification
-This dataset can also be formulated as a text classification problem. Given a question and a sentence, output a probability that the sentence is the answer of the question. However, rather than directly using existing models, **we propose a new text classification model based BERT and Siamese network in this repository**. We feed a question and a sentence into two separate BERT models, and get two pooled outputs from BERT models, respectively. But the two BERT models are sharing weights. Then, we concatenate two outputs and feed into a sigmoid layer. The code below simply shows how the the model works.
+This dataset can also be formulated as a text classification problem. Given a question and a sentence, output a probability that the sentence is the answer of the question. However, rather than directly using existing models, **we propose a new text classification model based BERT and Siamese network in this repository**. We feed a question and a sentence into two separate BERT models, and get two pooled outputs from BERT models, respectively. But the two BERT models are sharing weights. Then, we concatenate two outputs and feed into a sigmoid layer. The code below simply shows how the the model works. Please check my another repository [https://github.com/yinchuandong/sentiment-analysis](https://github.com/yinchuandong/sentiment-analysis) for more details.
+
 
 ```python
 
