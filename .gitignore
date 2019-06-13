@@ -31,7 +31,7 @@ tmp-*
 .pytest_cache
 
 # trainer
-bert
+.bert
 debug_squad*
 example_data/squad_full/*
 example_data/squad_simple/*.json_*

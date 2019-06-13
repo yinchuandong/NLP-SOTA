@@ -31,7 +31,7 @@ Please refer to my another project for end-to-end ML solution, including analysi
 1. Download pretrained BERT model from [https://github.com/google-research/bert#pre-trained-models](https://github.com/google-research/bert#pre-trained-models).
 
     ```
-    mkdir bert & cd bert
+    mkdir .bert & cd .bert
     wget https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-12_H-768_A-12.zip
     `unzip uncased_L-12_H-768_A-12.zip
     mv uncased_L-12_H-768_A-12 bert-base-uncased
@@ -40,7 +40,7 @@ Please refer to my another project for end-to-end ML solution, including analysi
 2. Convert tensorflow model file to pytorch model file
 
     ```
-     ./convert_tf_checkpoint_to_pytorch ./bert/bert-base-uncased
+     ./convert_tf_checkpoint_to_pytorch .bert/bert-base-uncased
     ```
 
 
@@ -105,7 +105,7 @@ estimator.fit(train_file='./example_data/squad_simple/train-v1.1.json',
               eval_file='./example_data/squad_simple/dev-v1.1.json',
               epochs=1,
               batch_size=2,
-              pretrained_model_path='./bert/bert-base-uncased')
+              pretrained_model_path='.bert/bert-base-uncased')
 
 # save model weights and vocabulary
 estimator.save('./output/trained-model')
