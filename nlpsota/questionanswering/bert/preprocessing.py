@@ -26,7 +26,6 @@ from pytorch_pretrained_bert.tokenization import (BasicTokenizer,
                                                   whitespace_tokenize)
 
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -34,22 +33,25 @@ class SquadExample(object):
     """
     A single training/test example for the Squad dataset.
     For examples without an answer, the start and end position are -1.
+
+    Note: An example can have multiple answers, which is different from
+          the official implementation.
     """
 
     def __init__(self,
                  qas_id,
                  question_text,
                  doc_tokens,
-                 orig_answer_text=None,
-                 start_position=None,
-                 end_position=None,
-                 is_impossible=None):
+                 orig_answer_texts=[],
+                 start_positions=[],
+                 end_positions=[],
+                 is_impossible=False):
         self.qas_id = qas_id
         self.question_text = question_text
         self.doc_tokens = doc_tokens
-        self.orig_answer_text = orig_answer_text
-        self.start_position = start_position
-        self.end_position = end_position
+        self.orig_answer_texts = orig_answer_texts
+        self.start_positions = start_positions
+        self.end_positions = end_positions
         self.is_impossible = is_impossible
 
     def __str__(self):
@@ -61,10 +63,12 @@ class SquadExample(object):
         s += ", question_text: %s" % (
             self.question_text)
         s += ", doc_tokens: [%s]" % (" ".join(self.doc_tokens))
-        if self.start_position:
-            s += ", start_position: %d" % (self.start_position)
-        if self.end_position:
-            s += ", end_position: %d" % (self.end_position)
+        if self.start_positions:
+            s += ", start_positions: [%s]" % (
+                " ".join(map(str, self.start_positions)))
+        if self.end_positions:
+            s += ", end_positions: [%s]" % (
+                " ".join(map(str, self.end_positions)))
         if self.is_impossible:
             s += ", is_impossible: %r" % (self.is_impossible)
         return s
@@ -83,8 +87,8 @@ class InputFeatures(object):
                  input_ids,
                  input_mask,
                  segment_ids,
-                 start_position=None,
-                 end_position=None,
+                 start_positions=None,
+                 end_positions=None,
                  is_impossible=None):
         self.unique_id = unique_id
         self.example_index = example_index
@@ -95,8 +99,8 @@ class InputFeatures(object):
         self.input_ids = input_ids
         self.input_mask = input_mask
         self.segment_ids = segment_ids
-        self.start_position = start_position
-        self.end_position = end_position
+        self.start_positions = start_positions
+        self.end_positions = end_positions
         self.is_impossible = is_impossible
 
 
@@ -131,48 +135,58 @@ def read_squad_examples(input_file, is_training, version_2_with_negative):
             for qa in paragraph["qas"]:
                 qas_id = qa["id"]
                 question_text = qa["question"]
-                start_position = None
-                end_position = None
-                orig_answer_text = None
+                orig_answer_texts = []
+                start_positions = []
+                end_positions = []
                 is_impossible = False
                 if is_training:
                     if version_2_with_negative:
                         is_impossible = qa["is_impossible"]
-                    if (len(qa["answers"]) != 1) and (not is_impossible):
-                        raise ValueError(
-                            "For training, each question should have exactly 1 answer.")
+                    # if (len(qa["answers"]) != 1) and (not is_impossible):
+                    #     raise ValueError(
+                    #         "For training, each question should have exactly 1 answer.")
                     if not is_impossible:
-                        answer = qa["answers"][0]
-                        orig_answer_text = answer["text"]
-                        answer_offset = answer["answer_start"]
-                        answer_length = len(orig_answer_text)
-                        start_position = char_to_word_offset[answer_offset]
-                        end_position = char_to_word_offset[answer_offset + answer_length - 1]
-                        # Only add answers where the text can be exactly recovered from the
-                        # document. If this CAN'T happen it's likely due to weird Unicode
-                        # stuff so we will just skip the example.
-                        #
-                        # Note that this means for training mode, every example is NOT
-                        # guaranteed to be preserved.
-                        actual_text = " ".join(doc_tokens[start_position:(end_position + 1)])
-                        cleaned_answer_text = " ".join(
-                            whitespace_tokenize(orig_answer_text))
-                        if actual_text.find(cleaned_answer_text) == -1:
-                            logger.warning("Could not find answer: '%s' vs. '%s'",
-                                           actual_text, cleaned_answer_text)
-                            continue
+                        for answer in qa["answers"]:
+                            orig_answer_text = answer["text"]
+                            answer_offset = answer["answer_start"]
+                            answer_length = len(orig_answer_text)
+                            start_position = char_to_word_offset[answer_offset]
+                            end_position = char_to_word_offset[answer_offset +
+                                                               answer_length - 1]
+                            # Only add answers where the text can be exactly recovered from the
+                            # document. If this CAN'T happen it's likely due to weird Unicode
+                            # stuff so we will just skip the example.
+                            #
+                            # Note that this means for training mode, every example is NOT
+                            # guaranteed to be preserved.
+                            actual_text = " ".join(
+                                doc_tokens[start_position:(end_position + 1)])
+                            cleaned_answer_text = " ".join(
+                                whitespace_tokenize(orig_answer_text))
+                            if actual_text.find(cleaned_answer_text) == -1:
+                                logger.warning("Could not find answer: '%s' vs. '%s'",
+                                               actual_text, cleaned_answer_text)
+                                continue
+
+                            orig_answer_texts.append(orig_answer_text)
+                            start_positions.append(start_position)
+                            end_positions.append(end_position)
                     else:
+                        orig_answer_text = ""
                         start_position = -1
                         end_position = -1
-                        orig_answer_text = ""
+
+                        orig_answer_texts.append(orig_answer_text)
+                        start_positions.append(start_position)
+                        end_positions.append(end_position)
 
                 example = SquadExample(
                     qas_id=qas_id,
                     question_text=question_text,
                     doc_tokens=doc_tokens,
-                    orig_answer_text=orig_answer_text,
-                    start_position=start_position,
-                    end_position=end_position,
+                    orig_answer_texts=orig_answer_texts,
+                    start_positions=start_positions,
+                    end_positions=end_positions,
                     is_impossible=is_impossible)
                 examples.append(example)
     return examples
@@ -201,20 +215,27 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                 tok_to_orig_index.append(i)
                 all_doc_tokens.append(sub_token)
 
-        tok_start_position = None
-        tok_end_position = None
+        tok_start_positions = []
+        tok_end_positions = []
         if is_training and example.is_impossible:
             tok_start_position = -1
             tok_end_position = -1
+            tok_start_positions.append(tok_start_position)
+            tok_end_positions.append(tok_end_position)
+
+        # support multiple answers
         if is_training and not example.is_impossible:
-            tok_start_position = orig_to_tok_index[example.start_position]
-            if example.end_position < len(example.doc_tokens) - 1:
-                tok_end_position = orig_to_tok_index[example.end_position + 1] - 1
-            else:
-                tok_end_position = len(all_doc_tokens) - 1
-            (tok_start_position, tok_end_position) = _improve_answer_span(
-                all_doc_tokens, tok_start_position, tok_end_position, tokenizer,
-                example.orig_answer_text)
+            for orig_answer_text, start_position, end_position in \
+                    zip(example.orig_answer_texts, example.start_positions, example.end_positions):
+                tok_start_position = orig_to_tok_index[start_position]
+                if end_position < len(example.doc_tokens) - 1:
+                    tok_end_position = orig_to_tok_index[end_position + 1] - 1
+                else:
+                    tok_end_position = len(all_doc_tokens) - 1
+                (tok_start_position, tok_end_position) = _improve_answer_span(
+                    all_doc_tokens, tok_start_position, tok_end_position, tokenizer, orig_answer_text)
+                tok_start_positions.append(tok_start_position)
+                tok_end_positions.append(tok_end_position)
 
         # The -3 accounts for [CLS], [SEP] and [SEP]
         max_tokens_for_doc = max_seq_length - len(query_tokens) - 3
@@ -250,7 +271,8 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
 
             for i in range(doc_span.length):
                 split_token_index = doc_span.start + i
-                token_to_orig_map[len(tokens)] = tok_to_orig_index[split_token_index]
+                token_to_orig_map[len(
+                    tokens)] = tok_to_orig_index[split_token_index]
 
                 is_max_context = _check_is_max_context(doc_spans, doc_span_index,
                                                        split_token_index)
@@ -276,28 +298,36 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
             assert len(input_mask) == max_seq_length
             assert len(segment_ids) == max_seq_length
 
-            start_position = None
-            end_position = None
+            start_positions = []
+            end_positions = []
             if is_training and not example.is_impossible:
                 # For training, if our document chunk does not contain an annotation
                 # we throw it out, since there is nothing to predict.
-                doc_start = doc_span.start
-                doc_end = doc_span.start + doc_span.length - 1
-                out_of_span = False
-                if not (tok_start_position >= doc_start and
-                        tok_end_position <= doc_end):
-                    out_of_span = True
-                if out_of_span:
-                    start_position = 0
-                    end_position = 0
-                else:
-                    doc_offset = len(query_tokens) + 2
-                    start_position = tok_start_position - doc_start + doc_offset
-                    end_position = tok_end_position - doc_start + doc_offset
+                for tok_start_position, tok_end_position in zip(tok_start_positions, tok_end_positions):
+                    doc_start = doc_span.start
+                    doc_end = doc_span.start + doc_span.length - 1
+                    out_of_span = False
+                    if not (tok_start_position >= doc_start and
+                            tok_end_position <= doc_end):
+                        out_of_span = True
+                    if out_of_span:
+                        start_position = 0
+                        end_position = 0
+                    else:
+                        doc_offset = len(query_tokens) + 2
+                        start_position = tok_start_position - doc_start + doc_offset
+                        end_position = tok_end_position - doc_start + doc_offset
+                    start_positions.append(start_position) 
+                    end_positions.append(end_position)                   
+
             if is_training and example.is_impossible:
                 start_position = 0
                 end_position = 0
-            if example_index < 20:
+                start_positions.append(start_position) 
+                end_positions.append(end_position)
+            
+            # print out the first 2 examples
+            if example_index < 2:
                 logger.info("*** Example ***")
                 logger.info("unique_id: %s" % (unique_id))
                 logger.info("example_index: %s" % (example_index))
@@ -308,7 +338,8 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                 logger.info("token_is_max_context: %s" % " ".join([
                     "%d:%s" % (x, y) for (x, y) in token_is_max_context.items()
                 ]))
-                logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
+                logger.info("input_ids: %s" %
+                            " ".join([str(x) for x in input_ids]))
                 logger.info(
                     "input_mask: %s" % " ".join([str(x) for x in input_mask]))
                 logger.info(
@@ -316,11 +347,13 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                 if is_training and example.is_impossible:
                     logger.info("impossible example")
                 if is_training and not example.is_impossible:
-                    answer_text = " ".join(tokens[start_position:(end_position + 1)])
-                    logger.info("start_position: %d" % (start_position))
-                    logger.info("end_position: %d" % (end_position))
-                    logger.info(
-                        "answer: %s" % (answer_text))
+                    for start_position, end_position in zip(start_positions, end_positions):
+                        answer_text = " ".join(
+                            tokens[start_position:(end_position + 1)])
+                        logger.info("start_position: %d" % (start_position))
+                        logger.info("end_position: %d" % (end_position))
+                        logger.info(
+                            "answer: %s" % (answer_text))
 
             features.append(
                 InputFeatures(
@@ -333,8 +366,8 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                     input_ids=input_ids,
                     input_mask=input_mask,
                     segment_ids=segment_ids,
-                    start_position=start_position,
-                    end_position=end_position,
+                    start_positions=start_positions,
+                    end_positions=end_positions,
                     is_impossible=example.is_impossible))
             unique_id += 1
 
@@ -407,7 +440,8 @@ def _check_is_max_context(doc_spans, cur_span_index, position):
             continue
         num_left_context = position - doc_span.start
         num_right_context = end - position
-        score = min(num_left_context, num_right_context) + 0.01 * doc_span.length
+        score = min(num_left_context, num_right_context) + \
+            0.01 * doc_span.length
         if best_score is None or score > best_score:
             best_score = score
             best_span_index = span_index
@@ -458,7 +492,8 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
             end_indexes = _get_best_indexes(result.end_logits, n_best_size)
             # if we could have irrelevant answers, get the min score of irrelevant
             if version_2_with_negative:
-                feature_null_score = result.start_logits[0] + result.end_logits[0]
+                feature_null_score = result.start_logits[0] + \
+                    result.end_logits[0]
                 if feature_null_score < score_null:
                     score_null = feature_null_score
                     min_null_feature_index = feature_index
@@ -514,10 +549,12 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
                 break
             feature = features[pred.feature_index]
             if pred.start_index > 0:  # this is a non-null prediction
-                tok_tokens = feature.tokens[pred.start_index:(pred.end_index + 1)]
+                tok_tokens = feature.tokens[pred.start_index:(
+                    pred.end_index + 1)]
                 orig_doc_start = feature.token_to_orig_map[pred.start_index]
                 orig_doc_end = feature.token_to_orig_map[pred.end_index]
-                orig_tokens = example.doc_tokens[orig_doc_start:(orig_doc_end + 1)]
+                orig_tokens = example.doc_tokens[orig_doc_start:(
+                    orig_doc_end + 1)]
                 tok_text = " ".join(tok_tokens)
 
                 # De-tokenize WordPieces that have been split off.
@@ -529,7 +566,8 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
                 tok_text = " ".join(tok_text.split())
                 orig_text = " ".join(orig_tokens)
 
-                final_text = get_final_text(tok_text, orig_text, do_lower_case, verbose_logging)
+                final_text = get_final_text(
+                    tok_text, orig_text, do_lower_case, verbose_logging)
                 if final_text in seen_predictions:
                     continue
 
@@ -554,9 +592,9 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
 
             # In very rare edge cases we could only have single null prediction.
             # So we just create a nonce prediction in this case to avoid failure.
-            if len(nbest)==1:
+            if len(nbest) == 1:
                 nbest.insert(0,
-                    _NbestPrediction(text="empty", start_logit=0.0, end_logit=0.0))
+                             _NbestPrediction(text="empty", start_logit=0.0, end_logit=0.0))
 
         # In very rare edge cases we could have no valid predictions. So we
         # just create a nonce prediction in this case to avoid failure.
@@ -709,7 +747,8 @@ def get_final_text(pred_text, orig_text, do_lower_case, verbose_logging=False):
 
 def _get_best_indexes(logits, n_best_size):
     """Get the n-best logits from a list."""
-    index_and_score = sorted(enumerate(logits), key=lambda x: x[1], reverse=True)
+    index_and_score = sorted(
+        enumerate(logits), key=lambda x: x[1], reverse=True)
 
     best_indexes = []
     for i in range(len(index_and_score)):

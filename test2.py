@@ -19,5 +19,6 @@ from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
 
 # %%
 
+" ".join(map(str, [1, 2,3]))
 
 # %%
