@@ -13,6 +13,16 @@
 
 ### Features
 
+- [x] question answering
+  - [x] BERT
+    - [x] data preprocessing
+    - [x] model build
+    - [ ] estimator build (not yet completed)
+- [x] text classification
+  - [x] BERT Siamese network
+    - [ ] data preprocessing
+    - [x] model build
+    - [ ] estimator build
 
 
-###
+### Question Answering
