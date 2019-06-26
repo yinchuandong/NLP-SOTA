@@ -1,3 +1,10 @@
+"""
+Acknowledge:
+The original code of this file is from https://github.com/huggingface/pytorch-pretrained-BERT/blob/master/examples/run_squad_dataset_utils.py
+
+I made some changes to adapt to the case that a question has multiple answers.
+"""
+
 import collections
 import json
 import logging
